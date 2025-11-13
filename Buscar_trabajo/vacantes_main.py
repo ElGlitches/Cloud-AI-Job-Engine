@@ -15,8 +15,8 @@ from src.getonbrd import buscar_vacantes_getonbrd
 # from src.trabajando import buscar_vacantes_trabajando # Asumo el nombre de la función
 
 # Importa el resto de tus utilidades
-from src.sheets_manager import aplanar_y_normalizar, conectar_sheets, preparar_hoja, actualizar_sheet, registrar_actualizacion # Asumo que esta es la función de normalización
-from src.analizador_vacantes import analizar_vacante # Asumo que esta es la función de análisis
+from src.sheets_manager import aplanar_y_normalizar, conectar_sheets, preparar_hoja, actualizar_sheet, registrar_actualizacion 
+from src.analizador_vacantes import analizar_vacante 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 # --- Fin Importaciones ---
 
@@ -76,7 +76,6 @@ def procesar_vacantes(resultados_raw):
     print(f"✅ Vacantes normalizadas: {len(vacantes_normalizadas)}")
 
     # Análisis (Placeholder para la lógica de análisis)
-    # Reemplazo el placeholder que tenías en tu script original por una estructura más limpia
     print("-> Iniciando Análisis de vacantes...")
     for i, v in enumerate(vacantes_normalizadas, 1):
         desc = v.get("descripcion", "")
@@ -86,11 +85,9 @@ def procesar_vacantes(resultados_raw):
             if not desc:
                 v["analisis"] = "Sin descripción disponible."
             else:
-                # La función analizar_vacante debe existir en src/analizador_vacantes.py
+                
                 v["analisis"] = analizar_vacante(desc)
             
-            # Puedes añadir aquí tu lógica de impresión de avance
-            # print(f"Analizada {i}/{len(vacantes_normalizadas)}") 
             
         except Exception as e:
             v["analisis"] = f"Error en análisis: {e}"
@@ -111,7 +108,7 @@ if __name__ == "__main__":
     # 2. Normalización y Análisis
     vacantes_finales = procesar_vacantes(resultados_crudos)
     
- # 3. Guardado en Google Sheets (¡NUEVO CÓDIGO DESCOMENTADO!)
+ # 3. Guardado en Google Sheets 
     try:
         # Asegúrate de importar estas funciones desde src.sheets_manager
         from src.sheets_manager import conectar_sheets, preparar_hoja, actualizar_sheet, registrar_actualizacion
@@ -133,6 +130,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ ERROR CRÍTICO al interactuar con Google Sheets: {e}")
         
-    print("\nProceso finalizado.")
-    
     print("\nProceso finalizado.")
