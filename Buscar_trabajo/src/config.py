@@ -18,7 +18,6 @@ PALABRAS_CLAVE = [
     "backend",
     "devops",
     "cloud",
-    "java",
     "sql"
 ]
 

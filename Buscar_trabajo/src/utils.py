@@ -15,10 +15,20 @@ def normalizar_texto(texto):
 
 def calc_prioridad(modalidad):
     """Asigna prioridad según modalidad u otras reglas"""
-    # Esta lógica es reutilizable y no es una constante, por eso va aquí.
-    modalidad = (modalidad or "").lower()
-    if "remoto" in modalidad:
+    
+    # 💡 CORRECCIÓN: Convierte el valor a cadena antes de usar .lower()
+    # Además, si es booleano, nos basaremos en el valor True/False directamente.
+    
+    if modalidad is True: # Si recibimos el booleano True (es remoto)
         return "Alta"
-    elif "híbrido" in modalidad:
+    if modalidad is False: # Si recibimos el booleano False (no es remoto)
+        return "Baja"
+        
+    # Si es una cadena (comportamiento original, ej: "remoto", "híbrido")
+    modalidad_str = str(modalidad or "").lower()
+    
+    if "remoto" in modalidad_str:
+        return "Alta"
+    elif "híbrido" in modalidad_str:
         return "Media"
     return "Baja"

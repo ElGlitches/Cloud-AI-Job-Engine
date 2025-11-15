@@ -75,7 +75,7 @@ def recoleccion_de_vacantes() -> List[Dict[str, Any]]:
 
 def procesar_vacantes(resultados_raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Normaliza, elimina duplicados (por URL) y realiza el análisis de las vacantes.
+    Normaliza, aplica la deduplicación y realiza el análisis CONCURRENTE.
     """
     
     # 1. Normalización y Aplanamiento
@@ -84,41 +84,47 @@ def procesar_vacantes(resultados_raw: List[Dict[str, Any]]) -> List[Dict[str, An
     vacantes_unicas = {}
     vacantes_sin_url = [] # Contenedor para retener items que no tienen URL
     
-    # 2. DEDUPLICACIÓN y FILTRADO para Depuración
+    # 2. DEDUPLICACIÓN y FILTRADO
     for vacante in vacantes_normalizadas:
         url = vacante.get("url")
-        
-        if url and url.strip(): # Si tiene URL válida
-            # Aplica deduplicación: si existe, se ignora, si no, se añade
+        if url and url.strip(): 
             vacantes_unicas[url] = vacante
         else:
-            # 💡 RETENCIÓN: Si no tiene URL, la añadimos a esta lista para DEPURAR
             vacantes_sin_url.append(vacante)
 
-    # 3. COMBINAR: Juntar las vacantes únicas con URL y las que no tienen URL
     vacantes_finales = list(vacantes_unicas.values()) + vacantes_sin_url
     
     print(f"✅ Vacantes ÚNICAS y procesadas: {len(vacantes_finales)}") 
 
-    # 4. ANÁLISIS
-    print("-> Iniciando Análisis de vacantes...")
-    for i, v in enumerate(vacantes_finales, 1):
-        desc = v.get("descripcion", "")
-        titulo = v.get("titulo", "Vacante sin título")
+    # --- 3. ANÁLISIS CONCURRENTE ---
+    #print("-> Iniciando Análisis CONCURRENTE de vacantes (llamadas a Gemini)...")
+    print("-> ANÁLISIS OMITIDO para ahorrar tokens. Datos listos para guardar.")
+    # max_workers=5: Limitar los hilos a 5 para evitar Rate Limiting severo.
+    # with ThreadPoolExecutor(max_workers=5) as executor: 
         
-        try:
-            if not desc:
-                v["analisis"] = "Sin descripción disponible."
-            else:
-                v["analisis"] = analizar_vacante(desc)
+    #     # Mapear cada descripción a una tarea de análisis
+    #     futures = {
+    #         executor.submit(analizar_vacante, v.get("descripcion", "")): v
+    #         for v in vacantes_finales
+    #     }
+        
+    #     # Recolectar resultados a medida que los hilos terminan
+    #     for future in as_completed(futures):
+    #         vacante = futures[future]
             
-        except Exception as e:
-            v["analisis"] = f"Error en análisis: {e}"
-            
+    #         try:
+    #             # El resultado es la cadena de análisis de Gemini
+    #             analisis_resultado = future.result() 
+    #             vacante["analisis"] = analisis_resultado
+                
+    #         except Exception as e:
+    #             # Captura fallos persistentes de la API después de los reintentos
+    #             vacante["analisis"] = f"ERROR API/Análisis: {e.__class__.__name__}"
+                
     return vacantes_finales
 
 
-# --- 3. Ejecución principal ---
+# --- 4. Ejecución principal ---
 if __name__ == "__main__":
     F_NAME = "vacantes_main.py"
     print(f"[{F_NAME}]: Iniciando proceso de búsqueda de vacantes...")

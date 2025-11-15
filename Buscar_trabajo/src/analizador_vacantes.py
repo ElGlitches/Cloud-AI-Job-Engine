@@ -1,84 +1,68 @@
-# src/analizador_vacantes.py
-from openai import OpenAI
-from dotenv import load_dotenv
-import os
+# src/analizador_vacantes.py (Versión Gemini)
 
-# Cargar variables del archivo .env
-load_dotenv()
+from tenacity import (
+    retry, 
+    stop_after_attempt, 
+    wait_exponential, 
+    retry_if_exception_type
+)
+from google import genai
+from google.genai.errors import APIError # Para capturar errores 
+from dotenv import load_dotenv # Para cargar la clave API desde .env
+import os 
+import time
 
-# Inicializar el cliente con la API key
-api_key = os.getenv("OPENAI_API_KEY")
+# ⚠️ CARGA EXPLÍCITA DEL ARCHIVO .env
+load_dotenv() 
 
-if not api_key:
-    raise ValueError(
-        "❌ No se encontró la clave OPENAI_API_KEY. "
-        "Asegúrate de tener un archivo .env con la línea: OPENAI_API_KEY=tu_clave_aqui"
+# Inicializa el cliente de Gemini. Lee la clave API del entorno.
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY")) 
+
+# -------------------------------------------------------------
+# 🤖 LÓGICA DE REINTENTO Y LLAMADA A LA API
+# -------------------------------------------------------------
+
+@retry(
+    wait=wait_exponential(multiplier=1, min=4, max=60), 
+    stop=stop_after_attempt(5), 
+    # Reintentar SOLO si ocurre un error de API (Rate Limit, etc.)
+    retry=(retry_if_exception_type(APIError)) 
+)
+def analizar_vacante(desc: str) -> str:
+    """
+    Analiza una descripción de vacante usando la API de Gemini.
+    Incluye lógica de reintento con espera gradual.
+    """
+    
+    # 1. Validación de Entrada
+    if not desc or len(desc) < 20:
+        return "Descripción demasiado corta para analizar."
+
+    # 2. Ingeniería de Prompt
+    prompt = (
+        "Eres un analista de datos experto en mercado laboral. Tu tarea es analizar "
+        "una descripción de trabajo y estructurar el resumen."
+        "Necesitas identificar 3 elementos clave de la vacante, siguiendo este formato JSON estrictamente: "
+        
+        "{ "
+        "  \"seniority\": [SENIORITY], "
+        "  \"skills\": [SKILL_1, SKILL_2, SKILL_3], "
+        "  \"resumen\": [BREVE_RESUMEN]"
+        "}"
+        
+        "\n\nInstrucciones Clave:"
+        "1. **Seniority:** Determina el nivel. Si no es claro, usa 'Mid'. Opciones: Junior, Mid, Senior, Lead."
+        "2. **Skills:** Lista los 3 requisitos técnicos más frecuentes y MÁS importantes. Usa nombres cortos (ej., 'AWS', 'Python', 'Terraform')."
+        "3. **Resumen:** Crea un resumen de la función en 15 palabras o menos."
+        f"\n\nDESCRIPCIÓN DE LA VACANTE: {desc}"
     )
 
-client = OpenAI(api_key=api_key)
+    # 3. Llamada a la API de Gemini
+    response = client.models.generate_content(
+        model="gemini-2.5-flash", 
+        contents=[prompt]
+    )
+    
+    # 4. Devolver resultado
+    return response.text
 
-
-def generar_prompt_analisis(vacante_texto):
-    """
-    Genera un prompt detallado para analizar si una vacante encaja con el perfil profesional de Iván Durán.
-    """
-
-    prompt = f"""
-Actúa como un asesor laboral y reclutador experto en perfiles tecnológicos.
-Tu función es analizar la siguiente vacante y determinar qué tan bien encaja con el perfil profesional del candidato.
-
-### Perfil del candidato:
-- Nombre: Iván Durán Luengo
-- Rol actual: Desarrollador Experto en Banco de Chile
-- Experiencia total: 4 años en desarrollo backend, automatización de procesos e integración de sistemas.
-- Áreas de experiencia: Backend, ETL, integración, automatización, infraestructura cloud y manejo de datos en entornos financieros regulados.
-- Tecnologías: Python, SQL, IBM DataStage, Control-M, AWS, GCP, Ansible, Bash, Docker, APIs REST, Node.js, React, PostgreSQL, Git.
-- Metodologías: Scrum, CI/CD, Jira, Confluence, Bamboo.
-- Formación: Analista Programador (Duoc UC).
-- Certificaciones: Google Cloud Computing Foundations (en curso), DevOps Engineer Path, Python con Django, JavaScript con Node.js.
-- Logros: Automatización de procesos bancarios reduciendo tiempos de ejecución en un 40%, estabilización de flujos ETL críticos y mejora de tiempos de respuesta ante incidencias.
-- Intereses: Roles relacionados con desarrollo backend, automatización, cloud o datos.
-- Preferencias: Evitar COBOL o funciones centradas en soporte puro.
-
-### Vacante a analizar:
-{vacante_texto}
-
-### Instrucciones:
-Analiza la vacante y entrega tu respuesta estructurada en el siguiente formato:
-
-📄 **Resumen de la vacante:**  
-[Describe brevemente el cargo, empresa y funciones principales.]
-
-🧩 **Compatibilidad con el perfil:** [porcentaje]%  
-[Explica por qué asignas ese porcentaje considerando nivel técnico, experiencia, entorno y proyección.]
-
-✅ **Puntos a favor:**  
-- [Coincidencia 1]  
-- [Coincidencia 2]  
-- [Coincidencia 3]  
-
-⚠️ **Puntos a mejorar o brechas:**  
-- [Diferencia 1]  
-- [Diferencia 2]  
-
-💡 **Recomendación final:**  
-Indica si recomendarías postular o no, justificando la decisión en base a encaje técnico, experiencia, cultura de la empresa y oportunidades de crecimiento profesional.
-"""
-    return prompt
-
-
-def analizar_vacante(vacante_texto):
-    """
-    Envía el prompt al modelo y devuelve el análisis de compatibilidad.
-    """
-    prompt = generar_prompt_analisis(vacante_texto)
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"⚠️ Error al analizar la vacante: {e}"
