@@ -12,12 +12,27 @@ import time
 # 🧱 Nuevos encabezados ampliados
 ENCABEZADOS = [
     "Título", "Empresa", "Ubicación", "Modalidad", "Nivel", "Jornada", "URL",
-    "Salario", "Estado", "Fecha de Registro", "Fecha Publicación", "Prioridad", "Descripción"
+    "Salario", "Estado", "Fecha de Registro", "Fecha Publicación", "Prioridad", "Descripción",
+    "Match %", "Razón Match" # 👈 NUEVAS COLUMNAS
 ]
 
 ESTADOS = ["Postulando", "Entrevista", "Rechazado", "Contratado", "Sin respuesta", "Descartado"]
 
 # --- FUNCIONES AUXILIARES ---
+
+def obtener_urls_existentes(sheet):
+    """
+    Obtiene un set con todas las URLs que ya están registradas en la hoja.
+    Útil para filtrar antes de procesar.
+    """
+    try:
+        data = sheet.get_all_values()
+        # Columna de URL (columna G, índice 6) - Asumiendo que la fila 1 son encabezados
+        urls = [row[6] for row in data[1:] if len(row) > 6 and row[6]]
+        return set(urls)
+    except Exception as e:
+        print(f"⚠️ Advertencia: No se pudieron cargar URLs existentes: {e}")
+        return set()
 
 def _aplicar_formato_y_validaciones(sheet):
     """Aplica el formato, filtro, congelación y validación de datos a la hoja."""
@@ -144,14 +159,8 @@ def actualizar_sheet(sheet, ofertas: list[dict]):
     """
     
     # 1. Obtener URLs existentes para deduplicación
-    try:
-        data = sheet.get_all_values()
-        # Columna de URL (columna G, índice 6)
-        urls_existentes = [row[6] for row in data[1:] if len(row) > 6 and row[6]] 
-        existentes = set(urls_existentes)
-    except Exception as e:
-        print(f"⚠️ Advertencia: No se pudieron cargar URLs existentes para deduplicación: {e}")
-        existentes = set() # Usar un conjunto vacío si falla la carga
+    # Usamos la función auxiliar si no se pasan externamente (aunque aquí recalculamos para seguridad en escritura)
+    existentes = obtener_urls_existentes(sheet)
 
 
     nuevas_filas = []
@@ -178,7 +187,9 @@ def actualizar_sheet(sheet, ofertas: list[dict]):
             o.get("fecha_busqueda", ""),
             o.get("fecha_publicacion", ""),
             o.get("prioridad", ""),
-            o.get("descripcion", "")
+            o.get("descripcion", ""),
+            o.get("match_percent", ""), # 👈 NUEVO CAMPO
+            o.get("match_reason", "")   # 👈 NUEVO CAMPO
         ])
 
     # 4. Inserción y confirmación (DEBE ESTAR FUERA DEL CICLO)

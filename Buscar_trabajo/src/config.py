@@ -9,38 +9,28 @@ SCOPES = [
 ]
 
 PALABRAS_CLAVE = [
-    # ------------------
-    # CORE: Tu Stack Actual (Mantener)
-    # ------------------
-    "python",
-    "automatización",
-    "backend",
-    "cloud",
-    "sql",
-
-    # ------------------
-    # ENFOQUE: Arquitectura y Plataforma (Nuevas)
-    # ------------------
-    "Arquitecto",          # Buscando explícitamente roles de diseño de alto nivel.
-    "Kubernetes",          # Tecnología premium de Cloud/DevOps.
-    "Microservicios",      # Arquitectura Senior/Patrones de Diseño.
-    "Plataforma",          # Roles de Ingeniería de Plataforma (sin gestión de personas).
-    "Infraestructura",     # Roles de diseño de la base Cloud/Infra.
-    "SRE",                 # Site Reliability Engineer (Ingeniería de Fiabilidad, muy técnico).
+    # --- TUS FORTALEZAS (Lo que vende tu CV hoy) ---
+    "Python",             # Tu lenguaje principal
+    "Ingeniero de Datos", # Tu perfil actual (DataStage, ETL)
+    "ETL",                # Específico para tu experiencia en Banca
+    "Automatización",     # Tu mayor logro (Reducción 40% tiempo)
+    "SQL",                # Base de todo tu trabajo
     
-    # ------------------
-    # ENFOQUE: Datos y Especialización (Nuevas)
-    # ------------------
-    "Ingeniero de Datos",  # Rol de BCI y tu especialidad en ETL/Tuning.
-    "Databricks",          # Tecnología de Data de alta demanda.
-    "data scientist",      # Aunque no es tu foco, te expone a roles de MLOps/DataOps.
-    "ETL",                 # Tu expertise en flujos de datos.
+    # --- TU PROYECCIÓN TÉCNICA (Sin ser "Jefe") ---
+    "DevOps",             # Por tu exp con Ansible/CI/CD (Mejor que "Arquitecto")
+    "SRE",                # Por tu exp en Monitoreo/Estabilidad (Muy bien pagado)
+    "Backend",            # Tu base general
+    "AWS",                # Tu nube más fuerte
+    
+    # --- OPCIONALES / FILTROS ---
+   # "Remoto"              # Si es prioridad
+   # "hírido"
 ]
 
 MAX_VACANTES_POR_PALABRA = 20 # Límite para cada keyword/portal
 
 # 🌐 URLs Base para Scraping (Usar {} para formato de string)
-URL_GETONBRD = "https://www.getonbrd.com/api/v0/search/jobs?query={}"
+URL_GETONBRD = "https://www.getonbrd.com/api/v0/search/jobs?query={}&expand=[\"company\",\"location_cities\",\"seniority\",\"modality\"]"
 # URL_LINKEDIN = "..." 
 # URL_COMPUTRABAJO = "..." 
 

@@ -4,7 +4,7 @@ import json
 from .config import URL_GETONBRD, MAX_VACANTES_POR_PALABRA
 from .utils import fecha_actual, calc_prioridad
 from bs4 import BeautifulSoup
-from datetime import datetime , timedelta# 👈 ¡IMPORTACIÓN FALTANTE!
+from datetime import datetime, timedelta
 # --- Fin Importaciones ---
 
 # --- Constante de Límite ---
@@ -33,35 +33,39 @@ def _procesar_resultados_getonbrd(json_data: list, keyword: str):
             
             if fecha_publicacion < fecha_limite:
                 continue # Omitir y pasar a la siguiente vacante
-        # 💡 NUEVA LÓGICA DE EXTRACCIÓN BASADA EN EL ID
-        item_id = item.get("id", "")
+        # 💡 LÓGICA DE EXTRACCIÓN (Usando 'expand')
         
-        # El ID está formateado como: [Título-de-la-Vacante]-[NOMBRE-EMPRESA]-[UBICACION-OPCIONAL]-[ID]
-        parts = item_id.split('-')
-        
-        # Opción segura (requiere la lógica de tu negocio)
-        empresa_candidata = parts[-3] if len(parts) >= 3 else "No indicado" 
-        
-        # Opción que busca el nombre de la empresa directamente en el ID:
-        empresa_en_id = item_id.split('-proyecto-')[-1].split('-')[0] if '-proyecto-' in item_id else parts[-3]
-        
-        # 2. UBICACIÓN: Si el ID termina con una ciudad, lo extraemos
-        ubicacion_candidata = parts[-1] if parts[-1].isalpha() else "Remoto/No indicado"
-        
-        # --- 2. CORRECCIÓN DE UBICACIÓN Y NIVEL ---
-        # Ubicación: Usamos el campo cities o regions si están disponibles
+        # 1. EMPRESA
+        company_data = attributes.get("company", {}).get("data", {})
+        if company_data:
+             empresa_candidata = company_data.get("attributes", {}).get("name", "No indicado")
+        else:
+             # Fallback al ID si falla la expansión
+             parts = item_id.split('-')
+             empresa_candidata = parts[-3] if len(parts) >= 3 else "No indicado"
+
+        # 2. UBICACIÓN
         cities_data = attributes.get("location_cities", {}).get("data", [])
         regions_data = attributes.get("location_regions", {}).get("data", [])
         
+        ubicacion_str = "No indicado"
         if cities_data:
-            ubicacion_str = "Ciudad Principal" # Simplificación, ya que el JSON solo da un ID aquí
+            nombres_ciudades = [c.get("attributes", {}).get("name") for c in cities_data]
+            nombres_ciudades = [n for n in nombres_ciudades if n] 
+            ubicacion_str = ", ".join(nombres_ciudades) if nombres_ciudades else "No indicado"
         elif regions_data:
-            ubicacion_str = "Región Principal"
+            nombres_regiones = [r.get("attributes", {}).get("name") for r in regions_data]
+            nombres_regiones = [n for n in nombres_regiones if n] 
+            ubicacion_str = ", ".join(nombres_regiones) if nombres_regiones else "No indicado"
         else:
             ubicacion_str = "Remoto" if attributes.get("remote") else "No indicado"
-        seniority_type = attributes.get("seniority", {}).get("data", {}).get("type", "no_seniority")
-        # Nivel: seniority_name está disponible en el JSON, lo usaremos.
-        nivel_str = attributes.get("seniority", {}).get("data", {}).get("type", "").replace("seniority", "").capitalize()
+
+        # 3. NIVEL (Seniority)
+        seniority_data = attributes.get("seniority", {}).get("data", {})
+        if seniority_data:
+            nivel_str = seniority_data.get("attributes", {}).get("name", "No indicado")
+        else:
+            nivel_str = "No indicado"
          # --- 3. CORRECCIÓN DE FECHA DE PUBLICACIÓN Y DESCRIPCIÓN ---
         
         # Fecha de Publicación: Se envía como un timestamp Unix (número grande).
@@ -83,19 +87,19 @@ def _procesar_resultados_getonbrd(json_data: list, keyword: str):
             "descripcion": descripcion_limpia,
             
             # --- DATOS CRUDOS ADICIONALES ---
-            "fecha_publicacion": attributes.get("published_at"),
+            "fecha_publicacion": fecha_publicacion.strftime("%Y-%m-%d"), # ✅ FECHA FORMATEADA
             
             # --- CAMPOS QUE LA IA DEBE LLENAR (VACÍOS POR DEFECTO) ---
-            "empresa": "", 
-            "ubicacion": "", 
-            "modalidad": "", 
-            "nivel": "",
-            "jornada": "",
-            "salario": "",
+            "empresa": empresa_candidata, # ✅ CAMPO MAPEADO
+            "ubicacion": ubicacion_str,   # ✅ CAMPO MAPEADO
+            "modalidad": "Remoto" if attributes.get("remote") else "Presencial", # ✅ CAMPO MAPEADO
+            "nivel": nivel_str,           # ✅ CAMPO MAPEADO
+            "jornada": attributes.get("modality", {}).get("data", {}).get("attributes", {}).get("name", "No indicado"), # ✅ JORNADA REAL (Full time, etc.)
+            "salario": salario_str,       # ✅ CAMPO MAPEADO
             
             # --- CAMPOS AUXILIARES ---
             "fecha_busqueda": fecha_actual(),
-            "prioridad": "", # La IA puede ayudar con esto
+            "prioridad": calc_prioridad(attributes.get("remote")), # ✅ PRIORIDAD CALCULADA
             "keyword_buscada": keyword
         }
         

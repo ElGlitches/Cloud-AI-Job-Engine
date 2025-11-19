@@ -32,3 +32,22 @@ def calc_prioridad(modalidad):
     elif "híbrido" in modalidad_str:
         return "Media"
     return "Baja"
+
+def clean_json_response(text: str) -> str:
+    """
+    Limpia la respuesta de la IA para extraer solo el JSON válido.
+    Elimina bloques de código markdown (```json ... ```).
+    """
+    if not text:
+        return ""
+    
+    # Eliminar envoltorios de markdown
+    cleaned = text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    if cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+        
+    return cleaned.strip()
