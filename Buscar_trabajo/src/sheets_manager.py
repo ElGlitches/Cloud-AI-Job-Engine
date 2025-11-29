@@ -5,20 +5,16 @@ from gspread_formatting import (
     DataValidationRule, BooleanCondition, set_data_validation_for_cell_range,
     format_cell_ranges, CellFormat, set_frozen
 )
-# Asumo que config está en el mismo nivel o es una ruta válida.
 from .config import SCOPES, SHEET_NAME 
 import time
 
-# 🧱 Nuevos encabezados ampliados
 ENCABEZADOS = [
     "Título", "Empresa", "Ubicación", "Modalidad", "Nivel", "Jornada", "URL",
     "Salario", "Estado", "Fecha de Registro", "Fecha Publicación", "Prioridad", "Descripción",
-    "Match %", "Razón Match" # 👈 NUEVAS COLUMNAS
+    "Match %", "Razón Match"
 ]
 
 ESTADOS = ["Postulando", "Entrevista", "Rechazado", "Contratado", "Sin respuesta", "Descartado"]
-
-# --- FUNCIONES AUXILIARES ---
 
 def obtener_urls_existentes(sheet):
     """
@@ -27,29 +23,23 @@ def obtener_urls_existentes(sheet):
     """
     try:
         data = sheet.get_all_values()
-        # Columna de URL (columna G, índice 6) - Asumiendo que la fila 1 son encabezados
         urls = [row[6] for row in data[1:] if len(row) > 6 and row[6]]
         return set(urls)
     except Exception as e:
-        print(f"⚠️ Advertencia: No se pudieron cargar URLs existentes: {e}")
+        print(f"Advertencia: No se pudieron cargar URLs existentes: {e}")
         return set()
 
 def _aplicar_formato_y_validaciones(sheet):
     """Aplica el formato, filtro, congelación y validación de datos a la hoja."""
     
-    # Congelar filas de encabezado
     set_frozen(sheet, rows=2)
     sheet.set_basic_filter()
     
-    # 🔗 Regla de validación de datos para la columna 'Estado'
     regla = DataValidationRule(BooleanCondition("ONE_OF_LIST", ESTADOS), showCustomUi=True)
-    # Rango de validación: Columna I (Estado) desde la fila 3 hasta la 10000
     set_data_validation_for_cell_range(sheet, "I3:I10000", regla)
     
-    # 🎨 Formato: Encabezados en negrita
-    # Rango de A2:M2 (fila de encabezados)
     format_cell_ranges(sheet, [("A2:M2", CellFormat(textFormat={"bold": True}))])
-    print("🎨 Formato y validaciones aplicadas.")
+    print("Formato y validaciones aplicadas.")
 
 def aplanar_y_normalizar(resultados_crudos):
     """
@@ -57,123 +47,97 @@ def aplanar_y_normalizar(resultados_crudos):
     """
     vacantes_normalizadas = []
     
-    # 💡 DEBUG 1: Revisa qué estructura está recibiendo la función
     if resultados_crudos:
         print(f"DEBUG APLANAR: El primer resultado crudo es de tipo: {type(resultados_crudos[0])}")
     
-    # 1. APLANAR: Añadir robustez para None
     for item in resultados_crudos: 
         if item is None:
-            continue  # Ignorar resultados nulos (común en errores de concurrencia)
+            continue
         
         if isinstance(item, list):
-            # Asumimos que es una lista de vacantes (la más común)
             vacantes_normalizadas.extend(item)
         elif isinstance(item, dict):
-            # Si el scraper devuelve una única vacante
             vacantes_normalizadas.append(item)
         else:
-            # Capturar cualquier otro tipo de dato inesperado
             print(f"DEBUG APLANAR: Tipo de dato inesperado encontrado: {type(item)}")
             
-    # Lógica de normalización
     vacantes_limpias = []
     for vacante in vacantes_normalizadas:
-        # ⚠️ Aseguramos que la URL y descripción existan, incluso si están vacías
         vacante['url'] = vacante.get('url', '') 
         vacante['descripcion'] = vacante.get('descripcion', '') 
         
-        # ... (otras normalizaciones)
-        
         vacantes_limpias.append(vacante)
 
-    # 💡 DEBUG 2: Verifica el tamaño final
     print(f"DEBUG APLANAR: Vacantes normalizadas listas para deducción: {len(vacantes_limpias)}")
     
     return vacantes_limpias
 
-# 🔗 Conexión con Google Sheets
 def conectar_sheets():
     """Establece la conexión, abre/crea el archivo y la hoja de vacantes."""
     
     creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
     cliente = gspread.authorize(creds)
 
-    # 🔄 Lógica de reintento simplificada
     sh = None
     for _ in range(3):
         try:
             try:
                 sh = cliente.open(SHEET_NAME)
             except gspread.exceptions.SpreadsheetNotFound:
-                print(f"📄 No se encontró '{SHEET_NAME}', creando nuevo archivo en Drive...")
+                print(f"No se encontró '{SHEET_NAME}', creando nuevo archivo en Drive...")
                 sh = cliente.create(SHEET_NAME)
             break
         except Exception as e:
             if "503" in str(e):
-                print("⚠️ Google Sheets no disponible, reintentando...")
-                time.sleep(3) # Reducido el tiempo de espera
+                print("Google Sheets no disponible, reintentando...")
+                time.sleep(3)
             else:
-                raise # Otros errores se elevan inmediatamente
+                raise
     else:
-        raise RuntimeError("❌ No se pudo conectar con Google Sheets después de varios intentos.")
+        raise RuntimeError("No se pudo conectar con Google Sheets después de varios intentos.")
 
-    # 📄 Crea o accede a la hoja "Vacantes"
     hojas = [ws.title for ws in sh.worksheets()]
     if "Vacantes" in hojas:
         return sh.worksheet("Vacantes")
     else:
-        print("📄 Creando hoja 'Vacantes' dentro del archivo...")
-        # Usa el tamaño de los encabezados para definir las columnas
+        print("Creando hoja 'Vacantes' dentro del archivo...")
         return sh.add_worksheet("Vacantes", rows=200, cols=len(ENCABEZADOS))
 
 
-# 🧩 Preparar estructura base
 def preparar_hoja(sheet):
     """
     Asegura que la hoja tenga los encabezados correctos y el formato base.
     """
     datos = sheet.get_all_values()
     
-    # Condición de verificación más robusta para encabezados
-    # Si la hoja está vacía (len(datos) < 2) O si el encabezado no coincide
     if len(datos) < 2 or datos[1][:len(ENCABEZADOS)] != ENCABEZADOS:
         sheet.clear()
-        print("🗑️ Hoja limpiada. Insertando nuevos encabezados y formato.")
+        print("Hoja limpiada. Insertando nuevos encabezados y formato.")
         sheet.update("A1", [[f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]])
         sheet.append_row(ENCABEZADOS)
         
-        # Aplicamos formato inmediatamente después de insertar encabezados
         _aplicar_formato_y_validaciones(sheet)
     else:
-        # Solo actualiza el registro de A1 si la estructura es correcta
         sheet.update("A1", [[f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]])
-        _aplicar_formato_y_validaciones(sheet) # Asegurar que el formato esté aplicado
+        _aplicar_formato_y_validaciones(sheet)
 
 
-# 🧾 Actualizar hoja con nuevas vacantes
 def actualizar_sheet(sheet, ofertas: list[dict]):
     """
     Añade nuevas vacantes a la hoja, anulando la deduplicación temporalmente 
     para forzar la inserción y depurar el campo URL.
     """
     
-    # 1. Obtener URLs existentes para deduplicación
-    # Usamos la función auxiliar si no se pasan externamente (aunque aquí recalculamos para seguridad en escritura)
     existentes = obtener_urls_existentes(sheet)
-
 
     nuevas_filas = []
 
-    # 2. Iterar sobre las vacantes para construir las filas y filtrar
     for o in ofertas:
-        url = o.get("url") # ✅ Aquí se define 'url' para CADA iteración.
+        url = o.get("url")
 
-        # ⚠️ Filtrado de duplicados: Solo ignoramos si tiene una URL y esta ya existe.
         if url and url in existentes:
              continue 
 
-        # 3. Mapeo de diccionario a lista (DEBE ESTAR DENTRO DEL CICLO)
         nuevas_filas.append([
             o.get("titulo", ""),
             o.get("empresa", ""),
@@ -181,28 +145,26 @@ def actualizar_sheet(sheet, ofertas: list[dict]):
             o.get("modalidad", ""),
             o.get("nivel", ""),
             o.get("jornada", ""),
-            o.get("url", ""), # Se insertará vacío si no se encontró en el scraper
+            o.get("url", ""),
             o.get("salario", ""),
-            "",  # Estado editable (vacío por defecto)
+            "",
             o.get("fecha_busqueda", ""),
             o.get("fecha_publicacion", ""),
             o.get("prioridad", ""),
             o.get("descripcion", ""),
-            o.get("match_percent", ""), # 👈 NUEVO CAMPO
-            o.get("match_reason", "")   # 👈 NUEVO CAMPO
+            o.get("match_percent", ""),
+            o.get("match_reason", "")
         ])
 
-    # 4. Inserción y confirmación (DEBE ESTAR FUERA DEL CICLO)
     if nuevas_filas:
         sheet.append_rows(nuevas_filas)
-        print(f"✅ {len(nuevas_filas)} nuevas vacantes agregadas.")
+        print(f"{len(nuevas_filas)} nuevas vacantes agregadas.")
     else:
-        print("🔄 No hay nuevas vacantes para agregar.")
+        print("No hay nuevas vacantes para agregar.")
 
 
-# 🕒 Registrar fecha de última actualización
 def registrar_actualizacion(sheet):
     """Actualiza la celda A1 con la fecha y hora actuales."""
     valor = f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     sheet.update("A1", [[valor]])
-    print("🕒 Fecha de actualización registrada.")
+    print("Fecha de actualización registrada.")

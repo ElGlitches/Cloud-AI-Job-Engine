@@ -5,27 +5,20 @@ from tenacity import (
     retry_if_exception_type
 )
 from google import genai
-from google.genai.errors import APIError # Para capturar errores 
-from dotenv import load_dotenv # Para cargar la clave API desde .env
+from google.genai.errors import APIError
+from dotenv import load_dotenv
 import os 
 import time
-from .utils import clean_json_response # Importar función de limpieza
-from .perfil import PERFIL_USUARIO # 👈 Importar perfil del usuario
+from .utils import clean_json_response, cargar_texto_pdf
+from .config import RUTA_CV
 
-# ⚠️ CARGA EXPLÍCITA DEL ARCHIVO .env
 load_dotenv() 
 
-# Inicializa el cliente de Gemini. Lee la clave API del entorno.
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY")) 
-
-# -------------------------------------------------------------
-# 🤖 LÓGICA DE REINTENTO Y LLAMADA A LA API
-# -------------------------------------------------------------
 
 @retry(
     wait=wait_exponential(multiplier=1, min=4, max=60), 
     stop=stop_after_attempt(5), 
-    # Reintentar SOLO si ocurre un error de API (Rate Limit, etc.)
     retry=(retry_if_exception_type(APIError)) 
 )
 def analizar_vacante(desc: str, titulo:str) -> str:
@@ -34,30 +27,34 @@ def analizar_vacante(desc: str, titulo:str) -> str:
     Incluye lógica de reintento con espera gradual.
     """
     
-    # 1. Validación de Entrada
     if not desc or len(desc) < 20:
         return "Descripción demasiado corta para analizar."
 
-    # 1. Ingeniería de Prompt y Definición de Tarea
+    perfil_texto = cargar_texto_pdf(RUTA_CV)
+    if not perfil_texto:
+        perfil_texto = "No se encontró CV. Asumir perfil genérico de Desarrollador Python/Data."
+
     prompt = (
         "Eres un experto en reclutamiento IT. Tu tarea es analizar la siguiente vacante "
         "y compararla con el perfil del candidato proporcionado.\n"
         
-        f"\n👤 PERFIL DEL CANDIDATO:\n{PERFIL_USUARIO}\n"
+        f"\nPERFIL DEL CANDIDATO:\n{perfil_texto}\n"
         
-        f"\n📄 VACANTE A ANALIZAR:\n"
+        f"\nVACANTE A ANALIZAR:\n"
         f"TÍTULO: {titulo}\n"
         f"DESCRIPCIÓN: {desc}\n"
         
         "\nInstrucciones:"
         "\n1. Extrae los datos clave de la vacante."
-        "\n2. Calcula un 'match_percent' (0-100) basado en qué tan bien encaja el perfil con la vacante."
-        "\n3. Genera una 'match_reason' breve (max 15 palabras) explicando el puntaje."
+        "\n2. Calcula un 'match_percent' (0-100) siguiendo estas reglas:"
+        "\n   - 90-100: Coincidencia perfecta (Python + ETL/Data + Cloud/AWS/GCP)."
+        "\n   - 70-89: Buen match (Python o Backend fuerte, pero falta alguna tec específica)."
+        "\n   - 40-69: Match parcial (Tecnologías relacionadas como SQL/Java/DevOps, pero no es el foco principal)."
+        "\n   - 0-39: No compatible (Frontend puro, .NET, Mobile, o stack totalmente diferente)."
+        "\n3. Genera una 'match_reason' breve (max 15 palabras) explicando el puntaje (ej: 'Stack Python/AWS ideal', 'Falta experiencia en React')."
         "\n4. Devuelve todo en JSON estricto."
     )
     
-    # 2. Definición del Esquema JSON (Schema)
-    # ¡IMPORTANTE! Este esquema debe coincidir con TUS ENCABEZADOS de Sheets (A:M)
     schema = {
         "type": "object",
         "properties": {
@@ -75,16 +72,14 @@ def analizar_vacante(desc: str, titulo:str) -> str:
         "required": ["empresa", "ubicacion", "nivel", "salario", "top_skills", "match_percent", "match_reason"]
     }
 
-    # 3. Llamada a la API de Gemini (Usando JSON Schema)
     response = client.models.generate_content(
         model="gemini-2.5-flash", 
         contents=[prompt],
         config=genai.types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=schema # Pasamos el esquema para una salida estricta
+            response_schema=schema
         )
     )
     
-    # 4. Devolver resultado limpio
     return clean_json_response(response.text)
 

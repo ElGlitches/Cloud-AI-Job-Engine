@@ -1,7 +1,21 @@
-# src/utils.py
-
 from datetime import datetime
+from pypdf import PdfReader
 # Importamos calc_prioridad si usa otra utilidad interna, pero aquí solo necesita datetime
+
+def cargar_texto_pdf(ruta_pdf: str) -> str:
+    """
+    Lee el texto de un archivo PDF.
+    Retorna el texto extraído o una cadena vacía si hay error.
+    """
+    try:
+        reader = PdfReader(ruta_pdf)
+        texto = ""
+        for page in reader.pages:
+            texto += page.extract_text() + "\n"
+        return texto.strip()
+    except Exception as e:
+        print(f"⚠️ Error al leer PDF ({ruta_pdf}): {e}")
+        return ""
 
 def fecha_actual():
     """Devuelve la fecha actual en formato YYYY-MM-DD"""
