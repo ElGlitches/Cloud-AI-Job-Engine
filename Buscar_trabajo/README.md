@@ -1,78 +1,72 @@
-# 🤖 Buscador de Vacantes con IA (Gemini)
+# 🤖 Asesor de Búsqueda de Empleo con IA
 
-Este proyecto automatiza la búsqueda de empleo en portales como **GetOnBrd** (y extensible a otros), analiza las vacantes utilizando **Google Gemini AI**, y las organiza en un **Google Sheet**.
+Este proyecto revoluciona tu búsqueda de trabajo combinando **Web Scraping Masivo** con un **Evaluador IA de Élite**. No es solo un buscador; es un sistema que descarga vacantes, descarta la "basura" automáticamente, y te permite analizar a demanda las oportunidades que realmente te interesan.
 
-Además, cuenta con un sistema de **"Fit Score"** que compara tu perfil profesional real con cada vacante para decirte qué tan buen match eres y por qué.
+## 🚀 Cómo Funciona (Workflow Híbrido)
 
-## 🚀 Características
+El sistema se divide en dos fases para máxima velocidad y eficiencia:
 
-- **Scraping Automático**: Busca vacantes por palabras clave (Python, AWS, etc.).
-- **Filtrado Inteligente**:
-    - Detecta vacantes ya procesadas para no gastar créditos de IA.
-    - Filtra por antigüedad (ej: vacantes de hace más de 2 meses).
-- **Análisis con IA (Gemini)**:
-    - Extrae datos clave: Empresa, Salario, Stack Tecnológico.
-    - **Fit Score**: Calcula un % de coincidencia con TU perfil.
-    - **Feedback**: Te dice *por qué* haces match (o por qué no).
-- **Google Sheets**: Guarda todo en una hoja de cálculo formateada y validada.
+### 1. 🕵️ El Recolector Veloz (`vacantes_main.py`)
+*   **Qué hace**: Navega por **LinkedIn** y **GetOnBrd**.
+*   **Filtro "Anti-Basura"**: Usa un algoritmo de *Keyword Scoring* (sin IA costo) para validar si la vacante tiene tus tecnologías clave (Python, AWS, ETL, etc.).
+    *   ✅ Si tiene coincidencias -> La guarda en Excel con estado "Pendiente".
+    *   🗑️ Si NO tiene ninguna -> La descarta y no ensucia tu base de datos.
+*   **Resultado**: Una hoja de Excel limpia, con salarios detectados y ubicaciones normalizadas.
+
+### 2. 🧠 El Asesor a Demanda (`chat_vacante.py`)
+*   **Qué hace**: Lee tu Excel y busca las vacantes "Pendientes".
+*   **Análisis Profundo**: Tú eliges qué vacante estudiar. La IA (Gemini):
+    *   Lee la descripción completa.
+    *   Calcula tu **Fit Score** real.
+    *   Genera una carta de presentación y tips de entrevista.
+*   **Chat Interactivo**: Se abre un chat donde puedes preguntarle: *"¿Qué me van a preguntar en la entrevista?"* o *"Mejora este párrafo de la carta"*.
+
+---
 
 ## 🛠️ Requisitos
 
-- Python 3.9+
-- Una cuenta de Google Cloud (para la API de Sheets).
-- Una API Key de Google Gemini.
+*   Python 3.9+
+*   Cuenta de Google Cloud (API Sheets)
+*   API Key de Gemini AI
 
 ## 📦 Instalación
 
-1.  **Clonar el repositorio**:
+1.  **Clonar el repositorio y entrar**:
     ```bash
     git clone <tu-repo>
     cd Buscar_trabajo
     ```
-
 2.  **Instalar dependencias**:
     ```bash
     pip install -r requirements.txt
+    playwright install
     ```
+3.  **Configuración**:
+    *   `credentials.json`: Tus credenciales de Google Service Account.
+    *   `.env`: Tu clave `GEMINI_API_KEY`.
+    *   `src/config.py`: Aquí defines tus `PALABRAS_CLAVE` (Skills) para el filtro rápido.
 
-3.  **Configurar Credenciales**:
-    - **Google Sheets**: Coloca tu archivo `credentials.json` (Service Account) en la raíz.
-    - **Gemini API**: Crea un archivo `.env` en la raíz con tu clave:
-        ```env
-        GEMINI_API_KEY=tu_api_key_aqui
-        ```
+## ▶️ Uso Diario
 
-4.  **Configurar tu Perfil**:
-    - Renombra el archivo de ejemplo:
-        ```bash
-        mv src/perfil.py.example src/perfil.py
-        ```
-    - Edita `src/perfil.py` y pega tu CV o resumen de habilidades. **¡Esto es clave para que el Fit Score funcione!**
-
-## ▶️ Uso
-
-Simplemente ejecuta el script principal:
-
+**Paso 1: Buscar Vacantes**
 ```bash
-python vacantes_main.py
+python3 vacantes_main.py
 ```
+*(Verás cómo navega y filtra vacantes irrelevantes en segundos)*
 
-El script:
-1.  Conectará a Google Sheets.
-2.  Buscará vacantes nuevas.
-3.  Las analizará con Gemini.
-4.  Guardará los resultados en la hoja "Vacantes_Automatizadas".
+**Paso 2: Analizar y Postular**
+```bash
+python3 chat_vacante.py
+```
+*(Selecciona una vacante de la lista para activar al Asesor)*
 
-## 📂 Estructura del Proyecto
+## 📂 Estructura
 
-- `vacantes_main.py`: Orquestador principal.
-- `src/`:
-    - `getonbrd.py`: Lógica de scraping para GetOnBrd.
-    - `analizador_vacantes.py`: Conexión con Gemini e ingeniería de prompts.
-    - `sheets_manager.py`: Manejo de Google Sheets (lectura/escritura/formato).
-    - `perfil.py`: Tu información profesional (Ignorado por git).
-    - `utils.py`: Utilidades generales.
+*   `vacantes_main.py`: Scraper y Filtro Rápido.
+*   `chat_vacante.py`: Interfaz de Análisis IA interactivo.
+*   `recomendaciones/`: Carpeta donde se guardan los análisis detallados (.md).
+*   `src/`: Módulos de lógica (LinkedIn, Sheets, AI).
 
 ## 🛡️ Privacidad
 
-El archivo `src/perfil.py` contiene tus datos personales y está añadido a `.gitignore` para evitar que se suba accidentalmente a un repositorio público.
+Tus datos personales sensibles (CV) se cargan desde `src/config.py` o PDF local y **nunca** se suben al repositorio (protegido por `.gitignore`).

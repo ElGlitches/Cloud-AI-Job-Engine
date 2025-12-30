@@ -8,10 +8,10 @@ from gspread_formatting import (
 from .config import SCOPES, SHEET_NAME 
 import time
 
+# 💡 COLUMNAS OPTIMIZADAS (Sin Descripción, Razón Match, Prioridad, Match %)
 ENCABEZADOS = [
     "Título", "Empresa", "Ubicación", "Modalidad", "Nivel", "Jornada", "URL",
-    "Salario", "Estado", "Fecha de Registro", "Fecha Publicación", "Prioridad", "Descripción",
-    "Match %", "Razón Match"
+    "Salario", "Estado", "Fecha de Registro", "Fecha Publicación"
 ]
 
 ESTADOS = ["Postulando", "Entrevista", "Rechazado", "Contratado", "Sin respuesta", "Descartado"]
@@ -23,6 +23,7 @@ def obtener_urls_existentes(sheet):
     """
     try:
         data = sheet.get_all_values()
+        # La URL sigue estando en índice 6 (columna G)
         urls = [row[6] for row in data[1:] if len(row) > 6 and row[6]]
         return set(urls)
     except Exception as e:
@@ -38,7 +39,8 @@ def _aplicar_formato_y_validaciones(sheet):
     regla = DataValidationRule(BooleanCondition("ONE_OF_LIST", ESTADOS), showCustomUi=True)
     set_data_validation_for_cell_range(sheet, "I3:I10000", regla)
     
-    format_cell_ranges(sheet, [("A2:M2", CellFormat(textFormat={"bold": True}))])
+    # Ajuste de rango de negritas (A2:K2) - Ajustado a 11 columnas
+    format_cell_ranges(sheet, [("A2:K2", CellFormat(textFormat={"bold": True}))])
     print("Formato y validaciones aplicadas.")
 
 def aplanar_y_normalizar(resultados_crudos):
@@ -107,25 +109,69 @@ def conectar_sheets():
 def preparar_hoja(sheet):
     """
     Asegura que la hoja tenga los encabezados correctos y el formato base.
+    Si los encabezados cambiaron, intenta MIGRAR los datos existentes.
     """
-    datos = sheet.get_all_values()
+    try:
+        datos = sheet.get_all_values()
+    except Exception:
+        datos = []
     
-    if len(datos) < 2 or datos[1][:len(ENCABEZADOS)] != ENCABEZADOS:
+    # Caso 1: Hoja vacía o corrupta
+    if len(datos) < 2:
         sheet.clear()
-        print("Hoja limpiada. Insertando nuevos encabezados y formato.")
+        print("Hoja vacía. Iniciando de cero.")
         sheet.update("A1", [[f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]])
         sheet.append_row(ENCABEZADOS)
-        
         _aplicar_formato_y_validaciones(sheet)
-    else:
+        return
+
+    # Caso 2: Verificar encabezados (Fila 2, índice 1)
+    filas_actuales_headers = datos[1]
+    headers_actuales = filas_actuales_headers[:len(ENCABEZADOS)]
+    
+    if headers_actuales == ENCABEZADOS:
+        # Todo correcto
         sheet.update("A1", [[f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]])
         _aplicar_formato_y_validaciones(sheet)
+        return
+
+    # Caso 3: MIGRACIÓN DE COLUMNAS
+    print(f"⚠️ Detectado cambio de estructura. Migrando datos... (Old: {len(headers_actuales)} cols, New: {len(ENCABEZADOS)} cols)")
+    
+    # Mapa de columnas antiguas: "NombreColumna" -> Indice
+    mapa_old = {nombre: idx for idx, nombre in enumerate(filas_actuales_headers)}
+    
+    filas_migradas = []
+    
+    # Datos comienzan en fila 3 (índice 2)
+    for fila_old in datos[2:]:
+        nueva_fila = []
+        for col_nueva in ENCABEZADOS:
+            # Buscar si existe en la vieja
+            idx_old = mapa_old.get(col_nueva)
+            
+            valor = ""
+            if idx_old is not None and idx_old < len(fila_old):
+                valor = fila_old[idx_old]
+            
+            nueva_fila.append(valor)
+        filas_migradas.append(nueva_fila)
+    
+    # Reescribir hoja
+    sheet.clear()
+    sheet.update("A1", [[f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]])
+    sheet.append_row(ENCABEZADOS)
+    
+    if filas_migradas:
+        sheet.append_rows(filas_migradas)
+        print(f"✅ Migración completada. {len(filas_migradas)} filas preservadas.")
+    
+    _aplicar_formato_y_validaciones(sheet)
 
 
 def actualizar_sheet(sheet, ofertas: list[dict]):
     """
-    Añade nuevas vacantes a la hoja, anulando la deduplicación temporalmente 
-    para forzar la inserción y depurar el campo URL.
+    Añade nuevas vacantes a la hoja.
     """
     
     existentes = obtener_urls_existentes(sheet)
@@ -149,11 +195,7 @@ def actualizar_sheet(sheet, ofertas: list[dict]):
             o.get("salario", ""),
             "",
             o.get("fecha_busqueda", ""),
-            o.get("fecha_publicacion", ""),
-            o.get("prioridad", ""),
-            o.get("descripcion", ""),
-            o.get("match_percent", ""),
-            o.get("match_reason", "")
+            o.get("fecha_publicacion", "")
         ])
 
     if nuevas_filas:

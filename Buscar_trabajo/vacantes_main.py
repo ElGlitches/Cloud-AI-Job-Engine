@@ -1,18 +1,21 @@
 import os
 import sys
 import json
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 from src.getonbrd import buscar_vacantes_getonbrd
+from src.linkedin_jobs import buscar_vacantes_linkedin
 from src.sheets_manager import aplanar_y_normalizar, conectar_sheets, preparar_hoja, actualizar_sheet, registrar_actualizacion, obtener_urls_existentes
 from src.analizador_vacantes import analizar_vacante
+from src.asesor import generar_pack_postulacion
 from src.config import PALABRAS_CLAVE
 
 
 PORTALES_ACTIVOS = [
     ("GetOnBrd", buscar_vacantes_getonbrd),
-    # ("LinkedIn", buscar_vacantes_linkedin),
+    ("LinkedIn", buscar_vacantes_linkedin),
     # ("Computrabajo", buscar_vacantes_computrabajo),
 ]
 
@@ -59,13 +62,23 @@ def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set
 
     vacantes_unicas = {}
     vacantes_sin_url = []
+    vacantes_descartadas = 0
+
+    from src.utils import es_vacante_valida # Importación tardía para evitar ciclos si fuera necesario, o mover arriba
 
     for vacante in vacantes_normalizadas:
+        # 0. FILTRO PREVIO (Exclusión/Inclusión)
+        if not es_vacante_valida(vacante.get("titulo"), vacante.get("descripcion")):
+            vacantes_descartadas += 1
+            continue
+
         url = vacante.get("url")
         if url and url.strip():
             vacantes_unicas[url] = vacante
         else:
             vacantes_sin_url.append(vacante)
+            
+    print(f"🧹 Vacantes descartadas por filtro de palabras: {vacantes_descartadas}")
 
     vacantes_finales = list(vacantes_unicas.values()) + vacantes_sin_url
 
@@ -84,51 +97,68 @@ def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set
         print("No hay vacantes nuevas para analizar.")
         return []
 
-    print(f"-> Iniciando Análisis CONCURRENTE de {len(vacantes_a_analizar)} vacantes nuevas...")
+    # --- NUEVA LÓGICA: FILTRADO RÁPIDO (SIN IA) ---
+    print(f"⚡ Filtrando {len(vacantes_a_analizar)} vacantes por palabras clave (Modo Rápido)...")
     
-    with ThreadPoolExecutor(max_workers=1) as executor:
-
-        futures = {
-            executor.submit(
-                analizar_vacante, 
-                v.get("descripcion", ""),
-                v.get("titulo", "")
-            ): v
-            for v in vacantes_a_analizar
-        }
-
-        for future in as_completed(futures):
-            vacante = futures[future]
-
-            try:
-                analisis_json_str = future.result(timeout=120)
-                analisis_data = json.loads(analisis_json_str)
-
-                campos_a_actualizar = ["empresa", "ubicacion", "modalidad", "nivel", "jornada", "salario"]
-                valores_nulos = ["", "No indicado", "No Determinado", "N/A", "No informado", "None"]
-
-                for campo in campos_a_actualizar:
-                    valor_actual = vacante.get(campo, "")
-                    valor_ia = analisis_data.get(campo, "")
-                    
-                    if str(valor_actual) in valores_nulos and valor_ia:
-                        vacante[campo] = valor_ia
-
-                vacante["seniority_estimado"] = analisis_data.get("nivel", "N/A") 
-                vacante["fit_score"] = analisis_data.get("seniority_score", 0) 
-                vacante["top_skills"] = ", ".join(analisis_data.get("top_skills", []))
-                vacante["match_percent"] = analisis_data.get("match_percent", 0)
-                vacante["match_reason"] = analisis_data.get("match_reason", "Sin motivo")
-
-                vacante["analisis"] = analisis_json_str
+    # Palabras clave extra para validar relevancia (puedes añadir más aquí o leer del config)
+    KEYWORDS_RELEVANTES = set([item.lower() for item in PALABRAS_CLAVE])
     
-            except Exception as e:
-                vacante["analisis"] = f"ERROR_IA: {e.__class__.__name__} - Revise .env o prompt"
-                vacante["match_percent"] = 0
-                vacante["match_reason"] = "Error en análisis IA"
-                vacante["seniority_estimado"] = "No Determinado"
-                vacante["top_skills"] = ""
-                
+    vacantes_filtradas = []
+
+    for vacante in vacantes_a_analizar:
+        texto_completo = (vacante.get("titulo", "") + " " + vacante.get("descripcion", "")).lower()
+        
+        # Scoring simple
+        score = 0
+        matches = []
+        for kw in KEYWORDS_RELEVANTES:
+            if kw in texto_completo:
+                score += 1
+                matches.append(kw)
+        
+        # Umbral: Al menos 1 palabra clave fuerte
+        if score > 0:
+            vacante["match_percent"] = "Pendiente" # Se calculará en Chat Asesor
+            vacante["match_reason"] = f"Keywords: {', '.join(matches[:3])}"
+            vacante["seniority_estimado"] = "N/A"
+            vacante["top_skills"] = ", ".join(matches)
+            vacantes_filtradas.append(vacante)
+        else:
+             print(f"🗑️ Descartando vacante irrelevante: {vacante.get('titulo')}")
+             # continue implícito al no hacer append
+    
+    # Actualizar la lista original para que el resto del script use solo las filtradas
+    vacantes_a_analizar = vacantes_filtradas
+
+    # --- FASE 2: GENERACIÓN DE PACK DE POSTULACIÓN (Asesor) ---
+    print("\n🧠 Generando Packs de Postulación para candidatos fuertes (Match >= 70%)...")
+    
+    # Crear carpeta si no existe
+    dir_recomendaciones = os.path.join(os.path.dirname(__file__), "recomendaciones")
+    os.makedirs(dir_recomendaciones, exist_ok=True)
+
+    for v in vacantes_a_analizar:
+        match_pct = v.get("match_percent", 0)
+        
+        # Filtrar solo los buenos matches para no gastar tokens
+        if isinstance(match_pct, (int, float)) and match_pct >= 70:
+            empresa = v.get("empresa", "Empresa").replace("/", "-").strip()
+            titulo = v.get("titulo", "Rol").replace("/", "-").strip()
+            filename = f"{empresa}_{titulo}.md"
+            filepath = os.path.join(dir_recomendaciones, filename)
+
+            # Evitar regenerar si ya existe (opcional, pero ahorra dinero)
+            if not os.path.exists(filepath):
+                print(f"   ✨ Generando estrategia para: {v.get('titulo')} en {v.get('empresa')} ({match_pct}%)")
+                try:
+                    pack_content = generar_pack_postulacion(v)
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(pack_content)
+                except Exception as e:
+                    print(f"   ⚠️ Error generando pack para {titulo}: {e}")
+            else:
+                print(f"   ✅ Pack ya existe: {filename}")
+
     return vacantes_a_analizar
 
 

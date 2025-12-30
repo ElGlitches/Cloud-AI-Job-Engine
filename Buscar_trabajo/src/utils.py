@@ -1,6 +1,36 @@
 from datetime import datetime
 from pypdf import PdfReader
-# Importamos calc_prioridad si usa otra utilidad interna, pero aquí solo necesita datetime
+from .config import PALABRAS_CLAVE, PALABRAS_EXCLUIDAS
+
+def es_vacante_valida(titulo, descripcion):
+    """
+    Filtra vacantes basándose en palabras excluidas y palabras clave requeridas.
+    """
+    if not titulo:
+        return False
+        
+    titulo = titulo.upper()
+    descripcion = (descripcion or "").upper()
+
+    # 1. FILTRO DE EXCLUSIÓN (Muerte Súbita)
+    # Si tiene ALGUNA palabra prohibida en el TÍTULO, chao.
+    for palabra in PALABRAS_EXCLUIDAS:
+        if palabra.upper() in titulo:
+            return False
+
+    # 2. FILTRO DE INCLUSIÓN
+    # Debe tener al menos UNA palabra clave en el TÍTULO o TRES en la DESCRIPCIÓN
+    # (Nota: El usuario pidió 3 en descripción en el prompt, pero en el código de ejemplo puso >= 2. Usaré >= 2 para ser consistente con su código)
+    tiene_match_titulo = any(p.upper() in titulo for p in PALABRAS_CLAVE)
+    
+    # Contar cuántas keywords aparecen en la descripción
+    matches_descripcion = sum(1 for p in PALABRAS_CLAVE if p.upper() in descripcion)
+
+    if tiene_match_titulo or matches_descripcion >= 2:
+        return True
+    
+    return False
+
 
 def cargar_texto_pdf(ruta_pdf: str) -> str:
     """

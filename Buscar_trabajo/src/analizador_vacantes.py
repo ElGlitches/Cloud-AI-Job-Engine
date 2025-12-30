@@ -9,12 +9,14 @@ from google.genai.errors import APIError
 from dotenv import load_dotenv
 import os 
 import time
-from .utils import clean_json_response, cargar_texto_pdf
-from .config import RUTA_CV
+from .utils import clean_json_response
+from .perfil import get_candidate_prompt
 
 load_dotenv() 
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY")) 
+
+# Cache logic removed in favor of src.perfil
 
 @retry(
     wait=wait_exponential(multiplier=1, min=4, max=60), 
@@ -26,33 +28,49 @@ def analizar_vacante(desc: str, titulo:str) -> str:
     Analiza una descripción de vacante usando la API de Gemini.
     Incluye lógica de reintento con espera gradual.
     """
+    print(f"DEBUG: Analizando vacante '{titulo}' (v2)...")
+    time.sleep(5) # Rate limit check
     
+    import json
     if not desc or len(desc) < 20:
-        return "Descripción demasiado corta para analizar."
+        return json.dumps({
+            "error": "Descripción demasiado corta/vacía", 
+            "match_percent": 0, 
+            "match_reason": "Sin datos",
+            "top_skills": [],
+            "seniority_score": 0,
+            "empresa": "Desconocida",
+            "ubicacion": "Desconocida",
+            "nivel": "N/A",
+            "jornada": "N/A",
+            "salario": "No informado"
+        })
 
-    perfil_texto = cargar_texto_pdf(RUTA_CV)
-    if not perfil_texto:
-        perfil_texto = "No se encontró CV. Asumir perfil genérico de Desarrollador Python/Data."
+    perfil_prompt = get_candidate_prompt()
 
     prompt = (
-        "Eres un experto en reclutamiento IT. Tu tarea es analizar la siguiente vacante "
-        "y compararla con el perfil del candidato proporcionado.\n"
+        "Eres un Asesor de Carrera Senior, experto en reclutamiento IT y conocido por ser BRUTALMENTE HONESTO. "
+        "Tu trabajo NO es dar falsas esperanzas, sino proteger el tiempo del candidato validando si REALMENTE tiene posibilidades.\n"
         
-        f"\nPERFIL DEL CANDIDATO:\n{perfil_texto}\n"
+        f"\n{perfil_prompt}\n"
         
         f"\nVACANTE A ANALIZAR:\n"
         f"TÍTULO: {titulo}\n"
         f"DESCRIPCIÓN: {desc}\n"
         
-        "\nInstrucciones:"
-        "\n1. Extrae los datos clave de la vacante."
-        "\n2. Calcula un 'match_percent' (0-100) siguiendo estas reglas:"
-        "\n   - 90-100: Coincidencia perfecta (Python + ETL/Data + Cloud/AWS/GCP)."
-        "\n   - 70-89: Buen match (Python o Backend fuerte, pero falta alguna tec específica)."
-        "\n   - 40-69: Match parcial (Tecnologías relacionadas como SQL/Java/DevOps, pero no es el foco principal)."
-        "\n   - 0-39: No compatible (Frontend puro, .NET, Mobile, o stack totalmente diferente)."
-        "\n3. Genera una 'match_reason' breve (max 15 palabras) explicando el puntaje (ej: 'Stack Python/AWS ideal', 'Falta experiencia en React')."
-        "\n4. Devuelve todo en JSON estricto."
+        "\nINSTRUCCIONES CRÍTICAS:"
+        "\n1. Analiza los REQUISITOS EXCLUYENTES de la vacante. Si el candidato no los cumple (ej: pide 5 años y tiene 2, pide Inglés avanzado y no lo menciona o es básico, pide React y el candidato es puro Python), DESCÁRTALO INMEDIATAMENTE con un puntaje bajo."
+        "\n2. Calcula 'match_percent' (0-100) con criterio ESTRICTO:"
+        "\n   - 90-100: MATCH PERFECTO. Cumple TODOS los requisitos técnicos y años de experiencia. Es el candidato ideal."
+        "\n   - 70-89: MATCH BUENO. Cumple lo principal (Lenguaje + Stack core), le falta quizás 1 herramienta menor o un poco de tiempo, pero es defendible."
+        "\n   - 40-69: ARRIESGADO. Le faltan requisitos importantes (ej: otro cloud provider, falta framework clave). Solo si la vacante es flexible."
+        "\n   - 0-39: NO TIRES TU TIEMPO. Stack diferente, seniority muy lejano, idioma faltante, o rol equivocado (ej: Fullstack vs Data Engineer)."
+        "\n3. Genera 'match_reason' (DIRECTO Y AL GRANO, max 15 palabras). Ejemplos:"
+        "\n   - 'Piden 5 años Java, eres Python Jr.'"
+        "\n   - 'Falta Inglés conversacional fluido.'"
+        "\n   - 'Stack %100 compatible. Aplica YA.'"
+        "\n   - 'Es rol DevOps, tú eres Data.'"
+        "\n4. Extrae los datos clave en JSON estricto."
     )
     
     schema = {
@@ -72,6 +90,7 @@ def analizar_vacante(desc: str, titulo:str) -> str:
         "required": ["empresa", "ubicacion", "nivel", "salario", "top_skills", "match_percent", "match_reason"]
     }
 
+    # Eliminado try-except manual para permitir que Tenacity maneje los reintentos
     response = client.models.generate_content(
         model="gemini-2.5-flash", 
         contents=[prompt],
@@ -81,5 +100,25 @@ def analizar_vacante(desc: str, titulo:str) -> str:
         )
     )
     
-    return clean_json_response(response.text)
+    import json
+    cleaned = clean_json_response(response.text)
+    
+    try:
+        json.loads(cleaned) # Validar
+        print(f"DEBUG: Returning cleaned JSON: {cleaned[:50]}...")
+        return cleaned
+    except Exception as e:
+        print(f"❌ Error parseando JSON de Gemini. Respuesta cruda: {response.text[:200]}...")
+        return json.dumps({
+            "error": f"JSON Error: {str(e)}", 
+            "match_percent": 0, 
+            "match_reason": "Error Análisis",
+            "top_skills": [],
+            "seniority_score": 0,
+            "empresa": "Error",
+            "ubicacion": "Error",
+            "nivel": "Error",
+            "jornada": "Error",
+            "salario": "Error"
+        })
 

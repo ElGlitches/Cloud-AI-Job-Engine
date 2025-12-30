@@ -15,7 +15,12 @@ def buscar_vacantes_bne():
                 url = f"https://www.bne.cl/ofertas?mostrar=empleo&textoLibre={palabra}"
                 print(f"🔎 Buscando '{palabra}' en BNE...")
                 page.goto(url, timeout=60000)
-                page.wait_for_timeout(8000)  # esperar carga inicial
+                # Reemplazado wait_for_timeout(8000) por espera inteligente
+                try:
+                    page.wait_for_selector("app-oferta-card", timeout=15000)
+                except:
+                    print(f"⚠️ No se detectaron ofertas inmediatamente para '{palabra}'.")
+                
                 
                 # Forzar scroll para activar carga dinámica
                 for _ in range(4):
