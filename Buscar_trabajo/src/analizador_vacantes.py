@@ -19,8 +19,8 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # Cache logic removed in favor of src.perfil
 
 @retry(
-    wait=wait_exponential(multiplier=1, min=4, max=60), 
-    stop=stop_after_attempt(5), 
+    wait=wait_exponential(multiplier=2, min=10, max=120), 
+    stop=stop_after_attempt(8), 
     retry=(retry_if_exception_type(APIError)) 
 )
 def analizar_vacante(desc: str, titulo:str) -> str:
