@@ -21,7 +21,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 # Infrastructure Imports
 import ui
 from config import PALABRAS_CLAVE, RUTA_CV
-from upload_helper import upload_file
 
 # Data Engineering Imports
 from sheets_manager import aplanar_y_normalizar, conectar_sheets, preparar_hoja, actualizar_sheet, registrar_actualizacion, obtener_urls_existentes
