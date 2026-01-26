@@ -1,6 +1,6 @@
 from datetime import datetime
 from pypdf import PdfReader
-from .config import PALABRAS_CLAVE, PALABRAS_EXCLUIDAS
+from config import PALABRAS_CLAVE, PALABRAS_EXCLUIDAS
 
 def es_vacante_valida(titulo, descripcion):
     """
