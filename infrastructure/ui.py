@@ -84,12 +84,13 @@ def menu_principal() -> str:
     ).ask()
     
     # Mapeo de vuelta a los valores esperados por el main
-    if "SEARCH VACANCIES" in opcion:
+    if not opcion or "SHUTDOWN" in opcion:
+        return "Salir"
+    elif "SEARCH VACANCIES" in opcion:
         return "Buscar Vacantes"
     elif "SHOW DATABASE" in opcion:
         return "Ver Vacantes"
-    elif "SHUTDOWN" in opcion:
-        return "Salir"
+    
     return "Salir"
 
 def mostrar_ventana(titulo: str, contenido: Any, estilo_borde: str="white"):
