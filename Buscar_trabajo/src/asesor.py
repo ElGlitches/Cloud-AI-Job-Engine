@@ -6,6 +6,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from .utils import clean_json_response
 from .perfil import get_candidate_prompt
+from .upload_helper import enviar_mensaje_multimodal
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -64,34 +65,64 @@ def generar_pack_postulacion(vacante: dict) -> str:
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash-exp",
             contents=[prompt]
         )
         return response.text
     except Exception as e:
         return f"Error generando pack de postulación: {str(e)}"
 
-def iniciar_chat(contexto_inicial: str):
+def iniciar_chat(vacante: dict):
     """
-    Inicia una sesión de chat interactiva con el Asesor.
-    Retorna el objeto chat.
+    Inicia una sesión de chat interactiva con el Asesor usando el PROMPT PERSISTENTE v2.
     """
     try:
+        titulo = vacante.get("Título", "Vacante")
+        empresa = vacante.get("Empresa", "Confidencial")
+        url = vacante.get("URL", "No especificada")
+        descripcion = vacante.get("Descripción", "")
+        
+        perfil_candidato = get_candidate_prompt()
+
+        # Construcción del Prompt MAESTRO solicitado por el usuario
+        system_instruction = (
+            f"Actúa como mi Asesor de Carrera IT Senior (Headhunter nivel Elite).\n"
+            f"He adjuntado mi CV en formato PDF (cuyo contenido textual verás abajo). Úsalo como base de verdad absoluta para este análisis.\n\n"
+            
+            f"La vacante a analizar se encuentra en este enlace:\n"
+            f"🔗 {url}\n\n"
+            f"(Nota: Para asegurar que tengas todo el contexto, aquí está la DESCRIPCIÓN EXTRAÍDA del link):\n"
+            f"'{titulo} en {empresa}'\n"
+            f"{descripcion[:8000]}...\n\n" # Truncamos descripción si es gigante para no explotar tokens
+            
+            f"--- CONTENIDO DEL CV ADJUNTO ---\n"
+            f"{perfil_candidato}\n"
+            f"--------------------------------\n\n"
+
+            f"INSTRUCCIONES DE ANÁLISIS (HONESTIDAD BRUTAL):\n\n"
+            f"1. 🔍 FACT CHECK: Cruza los requisitos de la vacante (del link/texto) con mi CV. No asumas NADA. Si no está en el PDF, no lo tengo.\n\n"
+            
+            f"2. ⚖️ VEREDICTO (Primero):\n"
+            f"   - 🟢 APLICA YA (>80% match).\n"
+            f"   - 🟡 RIESGOSO (50-80%).\n"
+            f"   - 🔴 NO APLIQUES (<50% match).\n\n"
+            
+            f"3. ⚠️ GAPS & ATS:\n"
+            f"   - Dime qué 3 keywords de la vacante NO están en mi CV (Habilidades que el filtro ATS no encontrará).\n"
+            f"   - Dime qué 'Killer Question' me harán en la primera entrevista que podría descartarme por lo que ves en mi CV.\n\n"
+            
+            f"4. 🧪 VALIDACIÓN TÉCNICA:\n"
+            f"   - Générame una pregunta técnica muy difícil basada en el stack de la vacante para probar si realmente tengo el nivel Senior/Mid que piden.\n\n"
+            
+            f"Comienza con el VEREDICTO."
+        )
+
         chat = client.chats.create(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash-exp",
             history=[
                 genai.types.Content(
                     role="user",
-                    parts=[genai.types.Part.from_text(
-                        text=f"Hola. Este es el contexto de la vacante y mi perfil:\n{contexto_inicial}\n\n"
-                        "A partir de ahora, responde como mi Asesor de Carrera. Sé breve y útil."
-                    )]
-                ),
-                genai.types.Content(
-                    role="model",
-                    parts=[genai.types.Part.from_text(
-                        text="Entendido. Soy tu Asesor de Carrera Senior. ¿En qué te puedo ayudar sobre esta vacante?"
-                    )]
+                    parts=[genai.types.Part.from_text(text=system_instruction)]
                 )
             ]
         )

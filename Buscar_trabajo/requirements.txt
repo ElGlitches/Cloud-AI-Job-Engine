@@ -48,10 +48,12 @@ pyee==13.0.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 pytz==2025.2
+questionary
 referencing==0.36.2
 reportlab==4.4.3
 requests==2.32.4
 requests-oauthlib==2.0.0
+rich
 rpds-py==0.27.0
 rsa==4.9.1
 sgmllib3k==1.0.0

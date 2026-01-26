@@ -205,8 +205,15 @@ def actualizar_sheet(sheet, ofertas: list[dict]):
         print("No hay nuevas vacantes para agregar.")
 
 
-    sheet.update("A1", [[valor]])
-    print("Fecha de actualización registrada.")
+
+def registrar_actualizacion(sheet):
+    """Actualiza la celda A1 con la fecha actual."""
+    try:
+        fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sheet.update("A1", [[f"Última actualización: {fecha}"]])
+        print("Fecha de actualización registrada.")
+    except Exception as e:
+        print(f"Error al registrar actualización: {e}")
 
 def actualizar_estado(row_idx, nuevo_estado):
     """

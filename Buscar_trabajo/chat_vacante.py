@@ -3,7 +3,7 @@ import sys
 import glob
 import time
 import json
-from src.asesor import iniciar_chat, generar_pack_postulacion
+from src.asesor import iniciar_chat, generar_pack_postulacion, enviar_mensaje_multimodal
 from src.sheets_manager import conectar_sheets, actualizar_estado, actualizar_sheet
 from src.linkedin_jobs import extraer_datos_vacante
 from src.analizador_vacantes import analizar_vacante
@@ -55,12 +55,20 @@ def procesar_vacante_seleccionada(vacante, sheet):
     print(f"\n🧠 Analizando a fondo: {vacante.get('Título')} @ {vacante.get('Empresa')}...")
     
     # 1. Análisis Técnico
-    analisis_json = analizar_vacante(vacante.get("URL", ""), vacante.get("Título", ""))
+    description_to_analyze = vacante.get("Descripción", "")
+    analisis_json = analizar_vacante(description_to_analyze, vacante.get("Título", ""))
     
     # Parsear para actualizar sheet
     try:
         data_analisis = json.loads(analisis_json)
         match_pct = data_analisis.get("match_percent", 0)
+
+        # Actualizar datos si son genéricos (Extracción automática)
+        if vacante.get("Título") == "Cargo Manual":
+             vacante["Título"] = data_analisis.get("titulo_vacante", "Cargo Manual")
+        
+        if vacante.get("Empresa") == "Empresa Manual":
+             vacante["Empresa"] = data_analisis.get("empresa", "Empresa Manual")
         
         # 2. Generar Pack (Carta, Tips)
         print("📝 Redactando estrategia de postulación...")
@@ -109,60 +117,126 @@ def main():
     print(f"\nSe encontraron {len(vacantes)} vacantes pendientes.")
     
     # Menu Principal
-    print("\nOpciones:")
-    print(" [1-10] Seleccionar vacante de la lista")
-    print(" [L]    Analizar desde LINK externo 🌐")
-    print(" [0]    Salir")
+    # Menu Principal Loop
+    while True:
+        print("\nOpciones:")
+        print(" [1-10] Seleccionar vacante de la lista")
+        print(" [L]    Analizar desde LINK externo 🌐")
+        print(" [T]    Pegar Texto/Descripción directa 📋")
+        print(" [0]    Salir")
 
-    # Mostrar menú (Top 10)
-    top_n = vacantes[:10]
-    for i, v in enumerate(top_n):
-        print(f" [{i+1}] {v.get('Título')} - {v.get('Empresa')} (📍 {v.get('Ubicación')})")
+        # Mostrar menú (Top 10)
+        top_n = vacantes[:10]
+        for i, v in enumerate(top_n):
+            print(f" [{i+1}] {v.get('Título')} - {v.get('Empresa')} (📍 {v.get('Ubicación')})")
 
-    opcion_raw = input("\nElige opción: ").strip().lower()
-    
-    target_vacante = None
-    modo_link = False
-
-    if opcion_raw == "0":
-        return
-    elif opcion_raw == "l":
-        modo_link = True
-        url = input("Pegue el LINK de la vacante: ").strip()
-        if not url: return
-        print("🕵️ Scrapeando datos en vivo...")
-        datos_scraped = extraer_datos_vacante(url)
-        if not datos_scraped:
-            print("❌ No se pudo extraer información del link.")
-            return
+        opcion_raw = input("\nElige opción: ").strip().lower()
         
-        # Adaptar al formato de sheet
-        target_vacante = {
-            "Título": datos_scraped.get("titulo"),
-            "Empresa": datos_scraped.get("empresa"),
-            "Ubicación": datos_scraped.get("ubicacion"),
-            "URL": datos_scraped.get("url"),
-            "Descripción": datos_scraped.get("descripcion"),
-            "Match %": "Nuevo",
-            "_row_idx": None # No está en sheet aún
-        }
-    else:
-        try:
-            sel = int(opcion_raw)
-            target_vacante = top_n[sel-1]
-        except (ValueError, IndexError):
-            print("Opción inválida.")
+        target_vacante = None
+        modo_link = False
+
+        if opcion_raw == "0":
             return
+        elif opcion_raw == "l":
+            modo_link = True
+            url = input("Pegue el LINK de la vacante: ").strip()
+            if not url: continue
+            print("🕵️ Scrapeando datos en vivo...")
+            datos_scraped = extraer_datos_vacante(url)
+            if not datos_scraped:
+                print("❌ No se pudo extraer información del link.")
+                continue
+            
+            # Adaptar al formato de sheet
+            target_vacante = {
+                "Título": datos_scraped.get("titulo"),
+                "Empresa": datos_scraped.get("empresa"),
+                "Ubicación": datos_scraped.get("ubicacion"),
+                "URL": datos_scraped.get("url"),
+                "Descripción": datos_scraped.get("descripcion"),
+                "Match %": "Nuevo",
+                "_row_idx": None # No está en sheet aún
+            }
+            break # Exit menu loop to process
+            
+        elif opcion_raw == "t":
+            print("\n📋 MODO TEXTO MANUAL (Extracción Automática)")
+            titulo = "Cargo Manual" 
+            empresa = "Empresa Manual"
+            
+            print("\n📝 PEGA LA DESCRIPCIÓN ABAJO:")
+            print("   (Cuando termines, escribe 'FIN' en una nueva línea y dale Enter)")
+            print("   --------------------------------------------------------------")
+            
+            lines = []
+            while True:
+                try:
+                    line = input()
+                    if line.strip().upper() == "FIN":
+                        break
+                    lines.append(line)
+                except EOFError:
+                    break
+            
+            desc_full = "\n".join(lines).strip()
+            if len(desc_full) < 20: 
+                print("❌ Descripción muy corta / vacía.")
+                continue
+    
+            modo_link = True # Tratamos como 'link' para permitir guardado
+            target_vacante = {
+                "Título": titulo,
+                "Empresa": empresa,
+                "Ubicación": "Manual",
+                "URL": "Texto Pegado",
+                "Descripción": desc_full,
+                "Match %": "Nuevo",
+                "_row_idx": None
+            }
+            break # Exit menu loop to process
+    
+        else:
+            try:
+                sel = int(opcion_raw)
+                target_vacante = top_n[sel-1]
+                break # Exit menu loop to process
+            except (ValueError, IndexError):
+                print("❌ Opción inválida. Intenta de nuevo.")
+                # Loop continues automatically
 
     # Procesar
-    contexto = procesar_vacante_seleccionada(target_vacante, sheet)
+    pack_generado = procesar_vacante_seleccionada(target_vacante, sheet)
     
-    if contexto:
-        # Iniciar Chat
-        print("\n💬 Iniciando Chat con el Asesor...")
-        chat_session = iniciar_chat(contexto)
+    # Iniciar Chat
+    print("\n💬 Iniciando Chat con el Asesor (Modo Elite)...")
+    chat_session = iniciar_chat(target_vacante)
+    
+    # Primera interacción automática para obtener el veredicto
+    try:
+        # Enviamos un "Hola" o simplemente esperamos, pero como el history tiene el prompt del usuario como último mensaje 'user',
+        # el modelo debería responder inmediatamente al prompt del sistema/usuario.
+        # PERO: client.chats.create con history NO genera respuesta automática. Hay que enviar un mensaje.
+        # OJO: En mi implementación de iniciar_chat puse el prompt como 'user' history. 
+        # Para gatillar la respuesta, debo enviar algo o cambiar el history.
+        # Mejor estrategia: Enviar el prompt como primer mensaje sendMessage.
         
-        print(f"\n🤖 Asesor: He estudiado la vacante {target_vacante.get('Título')}. ¿Preparamos la entrevista o revisamos la carta?")
+        # En `iniciar_chat` (versión anterior modificada) lo metí en history. 
+        # Si lo dejo en history, tengo que enviar un input vacio o "Analiza".
+        pass 
+    except:
+        pass
+        
+    print(f"\n🤖 Asesor: Analizando '{target_vacante.get('Título')}' contra tu CV...")
+    
+    # Truco: Enviamos un token para disparar la respuesta al prompt de contexto si es necesario, 
+    # O simplemente imprimimos la respuesta inicial.
+    # En la API de Google GenAI, si el último mensaje es User, el modelo espera.
+    # Vamos a enviar "Dame el veredicto" para asegurar.
+    try:
+        resp = chat_session.send_message("Dame el veredicto según las instrucciones.")
+        print(f"\n{resp.text}")
+    except Exception as e:
+        print(f"Error obteniendo respuesta inicial: {e}")
         
         while True:
             user_input = input("\n👤 Tú: ")
@@ -170,9 +244,31 @@ def main():
                 print("👋 ¡Éxito en tu postulación!")
                 break
             
+            archivo_adjunto = None
+            mensaje_usuario = user_input
+            
+            # Detectar comando /adjuntar o /foto
+            if user_input.startswith(("/adjuntar", "/foto", "/attach")):
+                parts = user_input.split(" ", 1)
+                if len(parts) > 1:
+                    path_raw = parts[1].strip()
+                    # Limpiar comillas si el usuario arrastró el archivo
+                    path_raw = path_raw.replace('"', '').replace("'", "")
+                    archivo_adjunto = path_raw
+                    mensaje_usuario = "He adjuntado un archivo para que lo analices."
+                    print(f"📎 Adjuntando: {archivo_adjunto}")
+                else:
+                    print("⚠️ Uso: /adjuntar <ruta_del_archivo>")
+                    continue
+
             try:
-                resp = chat_session.send_message(user_input)
-                print(f"\n🤖 Asesor: {resp.text}")
+                if archivo_adjunto:
+                    resp_text = enviar_mensaje_multimodal(chat_session, mensaje_usuario, archivo_adjunto)
+                else:
+                    resp = chat_session.send_message(mensaje_usuario)
+                    resp_text = resp.text
+                    
+                print(f"\n🤖 Asesor: {resp_text}")
             except Exception as e:
                 print(f"Error: {e}")
 

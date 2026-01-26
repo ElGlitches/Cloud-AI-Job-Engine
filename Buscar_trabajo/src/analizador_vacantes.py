@@ -21,7 +21,8 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 @retry(
     wait=wait_exponential(multiplier=2, min=10, max=120), 
     stop=stop_after_attempt(8), 
-    retry=(retry_if_exception_type(APIError)) 
+    retry=(retry_if_exception_type(APIError)),
+    before_sleep=lambda retry_state: print(f"⏳ API saturada. Esperando para reintentar (Intento {retry_state.attempt_number})...")
 )
 def analizar_vacante(desc: str, titulo:str) -> str:
     """
@@ -59,8 +60,9 @@ def analizar_vacante(desc: str, titulo:str) -> str:
         f"DESCRIPCIÓN: {desc}\n"
         
         "\nINSTRUCCIONES CRÍTICAS:"
-        "\n1. Analiza los REQUISITOS EXCLUYENTES de la vacante. Si el candidato no los cumple (ej: pide 5 años y tiene 2, pide Inglés avanzado y no lo menciona o es básico, pide React y el candidato es puro Python), DESCÁRTALO INMEDIATAMENTE con un puntaje bajo."
-        "\n2. Calcula 'match_percent' (0-100) con criterio ESTRICTO:"
+        "\n1. IDENTIFICACIÓN: Extrae el NOMBRE REAL DE LA EMPRESA y el TÍTULO DEL CARGO directo de la descripción si 'TITULO' arriba dice 'Cargo Manual' o similar."
+        "\n2. Analiza los REQUISITOS EXCLUYENTES de la vacante. Si el candidato no los cumple (ej: pide 5 años y tiene 2, pide Inglés avanzado y no lo menciona o es básico, pide React y el candidato es puro Python), DESCÁRTALO INMEDIATAMENTE con un puntaje bajo."
+        "\n3. Calcula 'match_percent' (0-100) con criterio ESTRICTO:"
         "\n   - 90-100: MATCH PERFECTO. Cumple TODOS los requisitos técnicos y años de experiencia. Es el candidato ideal."
         "\n   - 70-89: MATCH BUENO. Cumple lo principal (Lenguaje + Stack core), le falta quizás 1 herramienta menor o un poco de tiempo, pero es defendible."
         "\n   - 40-69: ARRIESGADO. Le faltan requisitos importantes (ej: otro cloud provider, falta framework clave). Solo si la vacante es flexible."
@@ -76,6 +78,7 @@ def analizar_vacante(desc: str, titulo:str) -> str:
     schema = {
         "type": "object",
         "properties": {
+            "titulo_vacante": {"type": "string", "description": "El título oficial del cargo extraído del texto (ej: 'Ingeniero de Sistemas')."},
             "empresa": {"type": "string", "description": "Nombre de la empresa."},
             "ubicacion": {"type": "string", "description": "Ciudad, País o 'Remoto'."},
             "modalidad": {"type": "string", "description": "Ej: 'Remoto', 'Híbrido', 'Presencial'."},
@@ -87,12 +90,12 @@ def analizar_vacante(desc: str, titulo:str) -> str:
             "match_percent": {"type": "integer", "description": "Porcentaje de coincidencia (0-100) con el perfil del usuario."},
             "match_reason": {"type": "string", "description": "Explicación muy breve del match (ej: 'Falta experiencia en AWS')."},
         },
-        "required": ["empresa", "ubicacion", "nivel", "salario", "top_skills", "match_percent", "match_reason"]
+        "required": ["titulo_vacante", "empresa", "ubicacion", "nivel", "salario", "top_skills", "match_percent", "match_reason"]
     }
 
     # Eliminado try-except manual para permitir que Tenacity maneje los reintentos
     response = client.models.generate_content(
-        model="gemini-2.5-flash", 
+        model="gemini-2.0-flash-exp", 
         contents=[prompt],
         config=genai.types.GenerateContentConfig(
             response_mime_type="application/json",
