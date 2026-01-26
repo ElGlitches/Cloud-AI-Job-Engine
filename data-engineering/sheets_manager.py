@@ -5,7 +5,7 @@ from gspread_formatting import (
     DataValidationRule, BooleanCondition, set_data_validation_for_cell_range,
     format_cell_ranges, CellFormat, set_frozen
 )
-from .config import SCOPES, SHEET_NAME 
+from infrastructure.config import SCOPES, SHEET_NAME, CREDENTIALS_PATH 
 import time
 
 # 💡 COLUMNAS OPTIMIZADAS (Sin Descripción, Razón Match, Prioridad, Match %)
@@ -77,7 +77,7 @@ def aplanar_y_normalizar(resultados_crudos):
 def conectar_sheets():
     """Establece la conexión, abre/crea el archivo y la hoja de vacantes."""
     
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
     cliente = gspread.authorize(creds)
 
     sh = None

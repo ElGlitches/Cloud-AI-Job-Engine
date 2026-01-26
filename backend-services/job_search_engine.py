@@ -21,6 +21,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 # Infrastructure Imports
 import ui
 from config import PALABRAS_CLAVE, RUTA_CV
+from utils import es_vacante_valida
 
 # Data Engineering Imports
 from sheets_manager import aplanar_y_normalizar, conectar_sheets, preparar_hoja, actualizar_sheet, registrar_actualizacion, obtener_urls_existentes
@@ -93,7 +94,7 @@ def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set
         vacantes_sin_url = []
         vacantes_descartadas = 0
 
-        from src.utils import es_vacante_valida 
+        # from src.utils import es_vacante_valida (Moved to top) 
 
         for vacante in vacantes_normalizadas:
             # 0. FILTRO PREVIO (Exclusión/Inclusión)

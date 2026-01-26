@@ -1,4 +1,8 @@
 from datetime import datetime
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 
 SHEET_NAME = "Vacantes_Automatizadas" 
 
