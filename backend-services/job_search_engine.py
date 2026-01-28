@@ -82,7 +82,7 @@ def recoleccion_de_vacantes(keywords_custom: List[str] = None) -> List[Dict[str,
 
     return resultados_raw
 
-def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set = set()) -> List[Dict[str, Any]]:
+def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set = set(), auto_mode: bool = False) -> List[Dict[str, Any]]:
     """
     Normaliza, aplica la deduplicación, y realiza el análisis CONCURRENTE (IA).
     """
@@ -169,7 +169,7 @@ def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set
     ui.console.print(f"✅ Vacantes relevantes tras filtro: [bold]{len(vacantes_a_analizar)}[/bold]")
 
     # --- FASE 2: GENERACIÓN DE PACK DE POSTULACIÓN (Asesor) ---
-    if ui.confirmar_accion(f"GENERATE APPLICATION PACKS FOR {len(vacantes_a_analizar)} VACANCIES?"):
+    if auto_mode or ui.confirmar_accion(f"GENERATE APPLICATION PACKS FOR {len(vacantes_a_analizar)} VACANCIES?"):
         ui.console.print("\n🧠 GENERATING STRATEGIES...")
         
         dir_recomendaciones = os.path.join(os.path.dirname(__file__), "recomendaciones")
@@ -202,6 +202,69 @@ def procesar_vacantes(resultados_raw: List[Dict[str, Any]], urls_existentes: set
         ui.console.print(f"✨ Se generaron [bold]{count_generados}[/bold] nuevos packs de postulación.")
 
     return vacantes_a_analizar
+
+
+def run_automated_search():
+    """
+    Runs the job search process largely unattended.
+    Intended for cron jobs or background execution.
+    """
+    ui.console.print("\n🤖 STARTING AUTOMATED JOB SEARCH ENGINE 🤖")
+    
+    # 1. Connect to Sheets
+    try:
+        ui.console.print("[dim]Connecting to Google Sheets...[/dim]")
+        hoja = conectar_sheets()
+        preparar_hoja(hoja)
+        urls_existentes = obtener_urls_existentes(hoja)
+    except Exception as e:
+        ui.console.print(f"❌ ERROR CONNECTING TO SHEETS: {e}")
+        # In automation, if we can't connect to DB to check duplicates, 
+        # we might risk duplicates or just fail. Let's return to avoid mess.
+        return
+
+    # 2. Get Keywords (Prefer Cache, else Config)
+    keywords_dinamicas = []
+    if os.path.exists(RUTA_CV):
+        try:
+            current_cv_hash = get_file_hash(RUTA_CV)
+            cached_keywords = load_keyword_cache(current_cv_hash)
+            if cached_keywords:
+                ui.console.print(f"⚡ Keywords from cache: {', '.join(cached_keywords)}")
+                keywords_dinamicas = cached_keywords
+            else:
+                 # If no cache, we don't want to block on AI analysis of CV in automation 
+                 # unless we implement a non-interactive version. 
+                 # For now, fallback to config PALABRAS_CLAVE is safer or just None (which uses config).
+                 ui.console.print("⚠️ CV changed or not cached. Using default config keywords.")
+        except Exception as e:
+            ui.console.print(f"⚠️ Error reading CV cache: {e}")
+    
+    # 3. Search
+    # If keywords_dinamicas is empty, recoleccion uses defaults from config.
+    resultados_crudos = recoleccion_de_vacantes(keywords_custom=keywords_dinamicas)
+    
+    if not resultados_crudos:
+        ui.console.print("NO VACANCIES FOUND.")
+        return
+
+    # 4. Process (Auto Mode = True)
+    # This will filter, dedupe, analyze with AI, and generate packs automatically.
+    vacantes_finales = procesar_vacantes(resultados_crudos, urls_existentes, auto_mode=True)
+
+    # 5. Save to Sheets (Auto)
+    if vacantes_finales and hoja:
+        try:
+            with ui.status_context("SAVING TO CLOUD"):
+                actualizar_sheet(hoja, vacantes_finales)
+                registrar_actualizacion(hoja)
+            ui.console.print("✅ SAVE SUCCESSFUL!")
+        except Exception as e:
+            ui.console.print(f"CRITICAL ERROR SAVING: {e}")
+    elif not vacantes_finales:
+        ui.console.print("[dim]Nothing new to save.[/dim]")
+
+    ui.console.print("\n🤖 AUTOMATION COMPLETE. BYE! 👋")
 
 
 def main():
