@@ -20,6 +20,41 @@ Optimizar el proceso de búsqueda de empleo reduciendo el tiempo de revisión ma
 *   **Data Integrity:** Validaciones automáticas, deduplicación y manejo de errores (Tenacity).
 *   **Cloud Integration:** Sincronización automática con Google Workspace API.
 
+## ⚙️ Configuración e Instalación
+
+### 1. Prerrequisitos
+- **Python 3.10** o superior.
+- Una cuenta de **Google Cloud Platform** (para API de Sheets).
+- Una API Key de **Google Gemini** (AI Studio).
+
+### 2. Instalación de Dependencias
+```bash
+# 1. Clonar repositorio
+git clone <url-del-repo>
+cd Cloud-AI-Job-Engine
+
+# 2. Crear entorno virtual (Recomendado)
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Instalar librerías
+pip install -r requirements.txt
+
+# 4. Instalar navegadores para scraping
+playwright install chromium
+```
+
+### 3. Configuración de Credenciales
+El sistema requiere dos archivos clave en la raíz del proyecto para funcionar:
+
+1.  **`.env`**: Variables de entorno para la IA.
+    ```bash
+    GEMINI_API_KEY="tu_api_key_aqui"
+    ```
+
+2.  **`credentials.json`**: Credencial de servicio de Google Cloud para acceder a Sheets.
+    - *Debe tener permisos de edición sobre la hoja de cálculo definida en `config.py`.*
+
 ## 💻 Uso y Ejecución
 
 ### 1. Ejecución Manual Interactiva
